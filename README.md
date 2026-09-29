@@ -31,3 +31,15 @@ The current stock prices in `lib/data.ts` remain display snapshots. They are not
 - Forward estimate 成功结果缓存7天，页面访问复用缓存。
 - Vercel Cron：工作日 23:00 UTC 预热缓存；页面底部显示数据口径、计划更新时间和实际缓存时间。
 - 注意：V2.6 的定时任务负责缓存预热；股票 EOD 价格仍沿用当前项目已有价格源/快照，真正的自动 EOD 行情 Provider 需要单独完成接入后才算全自动日更。
+
+
+## V2.6.1 hotfix
+- Removes EARNINGS_ESTIMATES fan-out from interactive dashboard reads.
+- Fixes Vercel 60s runtime timeout / 504 blank page.
+- Keeps Forward provider code for later background + persistent-store integration.
+- Corrects TTM EPS methodology copy to Alpha Vantage EARNINGS, matching implementation.
+
+## V2.7 persistent Forward cache
+Forward analyst estimates are no longer fetched during page/API reads. `/api/cron/update` fetches the 11 symbols serially and UPSERTs successful values into `forward_estimate_cache` in Postgres/Neon. `/api/dashboard` reads those persisted rows and calculates Forward PE using the page's EOD price. Failed refreshes do not delete previous rows.
+
+Required production environment variables: `DATABASE_URL`, `ALPHA_VANTAGE_API_KEY`; `CRON_SECRET` is recommended. On Vercel, the simplest persistent store is a Neon Postgres Marketplace integration.

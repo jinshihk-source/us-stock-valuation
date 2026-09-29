@@ -2,7 +2,7 @@ import { unstable_cache } from 'next/cache';
 import { dashboardData } from './data';
 import type { DashboardData, StockSnapshot } from './types';
 import { valuationLabel } from './valuation';
-import { attachForwardEstimate } from './forward-estimates';
+import { mergeForwardCache } from './persistent-forward';
 
 type MonthlyPoint={date:string;price:number};
 type EpsPoint={fiscalDateEnding:string;reportedDate?:string;reportedEPS:number};
@@ -85,9 +85,11 @@ export async function getDashboardData():Promise<DashboardData>{
   // 串行执行，避免免费 API 在同一瞬间收到 22 个并发请求而限流。成功结果会按股票缓存7天。
   const stocks:StockSnapshot[]=[];
   for(const s of dashboardData.stocks) stocks.push(await enrichOne(s));
-  const withForward:StockSnapshot[]=[];
-  for(const s of stocks) withForward.push(await attachForwardEstimate(s));
-  const ok=withForward.filter(s=>s.status==='ok').length;
-  const forwardReady=withForward.filter(s=>s.forwardPe!=null).length;
-  return {...dashboardData,stocks:withForward,updatedAt:new Date().toISOString(),events:[{symbol:'SYSTEM',title:`历史估值：${ok}/${withForward.length} 只已完成 · Forward PE：${forwardReady}/${withForward.length}`,source:'Dashboard V2.5',time:new Date().toISOString().slice(0,10),note:'EOD 为唯一价格口径；Forward Estimate 使用独立 Provider。未配置获授权的一致预期数据源时保持为空，不使用未经许可的网页爬虫。'},...dashboardData.events]};
+  // V2.6.1 hotfix: the interactive dashboard must never fan out to the
+  // EARNINGS_ESTIMATES endpoint. V2.6 did that here and could exceed Vercel's
+  // 60-second runtime limit. Keep the provider code, but decouple it from reads.
+  const merged=await mergeForwardCache(stocks);
+  const ok=merged.filter(s=>s.status==='ok').length;
+  const fwd=merged.filter(s=>s.forwardPe!=null).length;
+  return {...dashboardData,stocks:merged,updatedAt:new Date().toISOString(),events:[{symbol:'SYSTEM',title:`历史估值：${ok}/${merged.length} · Forward PE：${fwd}/${merged.length}`,source:'Dashboard V2.7',time:new Date().toISOString().slice(0,10),note:'Forward Estimates 由后台任务抓取并写入 Postgres/Neon；访客只读取持久化结果，不会触发 Alpha Vantage Forward 请求。'},...dashboardData.events]};
 }
