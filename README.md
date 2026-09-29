@@ -1,4 +1,4 @@
-# 美股科技估值仪表盘 V2.1
+# 美股科技估值仪表盘 V2.2
 
 ## 本次修正
 - 删除根目录旧 `index.html`，避免打开 V2 却看到 V1 的 S&P 100 / OEF 页面。
@@ -27,3 +27,8 @@
 - `CRON_SECRET`
 - `MARKET_DATA_PROVIDER`
 - `MARKET_DATA_API_KEY`
+
+
+## V2.2 fix
+- Fixed `/api/dashboard` to import the unified `dashboardData` export.
+- Removed stale references to `unavailableStocks` and `unavailableIndices`.
