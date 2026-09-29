@@ -32,3 +32,7 @@
 ## V2.2 fix
 - Fixed `/api/dashboard` to import the unified `dashboardData` export.
 - Removed stale references to `unavailableStocks` and `unavailableIndices`.
+
+
+## V2.3: enable 5Y stock valuation percentiles
+Add `ALPHA_VANTAGE_API_KEY` in Vercel → Project Settings → Environment Variables. The free mode uses 2 calls per stock (monthly adjusted price + earnings), 22 calls/day for the 11 displayed stocks, then caches the result for 24 hours. Historical percentile uses the last 5 years of monthly TTM PE observations and requires at least 36 valid months.
