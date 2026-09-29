@@ -1,0 +1,3 @@
+{
+  "name":"us-valuation-dashboard","private":true,"version":"0.1.0","scripts":{"dev":"next dev","build":"next build","start":"next start","lint":"next lint","update:data":"tsx scripts/update-data.ts"},"dependencies":{"@prisma/client":"latest","date-fns":"latest","date-fns-tz":"latest","next":"latest","react":"latest","react-dom":"latest","zod":"latest"},"devDependencies":{"prisma":"latest","tsx":"latest","typescript":"latest","@types/node":"latest","@types/react":"latest"}
+}
