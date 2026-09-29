@@ -1,3 +1,5 @@
-export type MetricStatus='ok'|'unavailable'|'not_applicable'|'stale';
-export interface StockRow{symbol:string;name:string;group:string;price:number|null;changePct:number|null;priceAt:string|null;ttmPe:number|null;forwardPe:number|null;estimateUpdatedAt:string|null;percentile:number|null;label:string;status:MetricStatus;reason?:string}
-export interface IndexRow{name:string;symbol:string;ttmPe:number|null;forwardPe:number|null;asOf:string|null;status:MetricStatus;reason?:string}
+export type ValuationLabel='估值偏低'|'中性'|'估值偏高'|'数据不足'|'不适用';
+export type DataStatus='ok'|'unavailable'|'not_applicable'|'stale';
+export interface MarketIndex {name:string;tracker:string;description:string;price:number|null;changePct:number|null;ttmPe:number|null;forwardPe:number|null;percentile5y:number|null;percentile10y:number|null;asOf:string|null;status:DataStatus;note:string}
+export interface StockSnapshot {name:string;symbol:string;group:string;price:number|null;changePct:number|null;ttmEps:number|null;ttmPe:number|null;forwardPe:number|null;percentile5y:number|null;label:ValuationLabel;tradeDate:string|null;status:DataStatus;source:string}
+export interface DashboardData {tradeDate:string|null;updatedAt:string|null;indices:MarketIndex[];stocks:StockSnapshot[];sentiment:{label:string;score:number|null;note:string};events:{symbol:string;title:string;source:string;time:string;note:string}[]}
