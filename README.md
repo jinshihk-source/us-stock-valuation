@@ -25,3 +25,5 @@ Recommended first commercial evaluation: Intrinio Startup for public display of 
 
 ## Local
 `npm install && npm run dev`
+
+Deployment trigger
