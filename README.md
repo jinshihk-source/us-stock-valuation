@@ -43,3 +43,13 @@ The current stock prices in `lib/data.ts` remain display snapshots. They are not
 Forward analyst estimates are no longer fetched during page/API reads. `/api/cron/update` fetches the 11 symbols serially and UPSERTs successful values into `forward_estimate_cache` in Postgres/Neon. `/api/dashboard` reads those persisted rows and calculates Forward PE using the page's EOD price. Failed refreshes do not delete previous rows.
 
 Required production environment variables: `DATABASE_URL`, `ALPHA_VANTAGE_API_KEY`; `CRON_SECRET` is recommended. On Vercel, the simplest persistent store is a Neon Postgres Marketplace integration.
+
+## V2.8 — persistent dashboard snapshot
+- Interactive `/` and `/api/dashboard` never call Alpha Vantage. They read one persisted `dashboard_snapshot` row from Neon, with a fast built-in fallback before the first background refresh.
+- Weekday cron refreshes EOD prices with `GLOBAL_QUOTE`, then writes the complete dashboard JSON snapshot to Neon.
+- Forward consensus remains persisted in `forward_estimate_cache` and is refreshed weekly (Monday UTC) to reduce free-tier API usage.
+- Failed symbol refreshes preserve the previous successful value; a partial failure does not blank the site.
+- Historical TTM EPS / 5Y basis is intentionally not re-downloaded on every page view or every day. It should be refreshed on a lower-frequency maintenance path because it requires two additional Alpha Vantage calls per stock.
+
+### One-time bootstrap after upgrading from V2.7
+Before the first cron has a complete historical basis, call `/api/admin/bootstrap` once with the same Bearer `CRON_SECRET`. It reuses the proven V2.7 historical pipeline, writes the complete result to `dashboard_snapshot`, and is not part of normal visitor traffic. After that, `/` and `/api/dashboard` are database-only reads.

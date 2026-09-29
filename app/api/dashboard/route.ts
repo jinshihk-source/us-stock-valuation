@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
-import { getDashboardData } from '../../../lib/enriched-data';
+import {NextResponse} from 'next/server';
+import {getFastDashboard} from '../../../lib/snapshot-service';
 export const dynamic='force-dynamic';
-export const maxDuration=60;
+export const maxDuration=10;
 export async function GET(){
-  const d=await getDashboardData();
+  const d=await getFastDashboard();
   const ok=d.stocks.filter(x=>x.status==='ok').length;
-  return NextResponse.json({generatedAt:new Date().toISOString(),version:'2.7',dataStatus:process.env.ALPHA_VANTAGE_API_KEY?(ok?`historical_ready_${ok}_of_${d.stocks.length}`:'historical_requested_but_no_stock_ready'):'api_key_required',livePrice:{enabled:false,reason:'public-display live market-data provider not configured'},...d});
+  const fwd=d.stocks.filter(x=>x.forwardPe!=null).length;
+  return NextResponse.json({generatedAt:new Date().toISOString(),version:'2.8',dataStatus:`snapshot_ready_${ok}_historical_${fwd}_forward_of_${d.stocks.length}`,livePrice:{enabled:false,reason:'EOD-only dashboard'},...d});
 }
