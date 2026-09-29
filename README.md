@@ -1,6 +1,6 @@
-# US Stock Valuation Dashboard V2.4
+# US Stock Valuation Dashboard V2.4.1
 
-V2.4 focuses on a reliable free historical-valuation pipeline.
+V2.4.1 focuses on a reliable free historical-valuation pipeline.
 
 - Alpha Vantage monthly adjusted prices + quarterly earnings
 - Rebuilds monthly TTM PE and 5-year percentile

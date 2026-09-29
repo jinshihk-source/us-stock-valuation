@@ -9,18 +9,37 @@ type Enrichment={ttmEps:number|null;ttmPe:number|null;percentile5y:number|null;h
 
 function n(v:any):number|null{const x=Number(v);return Number.isFinite(x)?x:null}
 function compactError(v:any){const s=String(v?.message||v||'unknown error').replace(/\s+/g,' ').trim();return s.slice(0,180)}
+const REQUEST_GAP_MS=1350;
+let lastAvRequestAt=0;
+const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
+function isThrottleMessage(v:any){
+  const s=String(v||'').toLowerCase();
+  return s.includes('sparingly')||s.includes('rate limit')||s.includes('frequency')||s.includes('requests per');
+}
 async function av(fn:string,symbol:string){
   const key=process.env.ALPHA_VANTAGE_API_KEY;
   if(!key) throw new Error('ALPHA_VANTAGE_API_KEY missing');
   const u=new URL('https://www.alphavantage.co/query');
   u.searchParams.set('function',fn);u.searchParams.set('symbol',symbol);u.searchParams.set('apikey',key);
-  const r=await fetch(u.toString(),{next:{revalidate:604800}});
-  if(!r.ok) throw new Error(`Alpha Vantage HTTP ${r.status}`);
-  const j=await r.json();
-  const apiError=j.Note||j.Information||j['Error Message'];
-  if(apiError) throw new Error(apiError);
-  return j;
+  let lastError='unknown Alpha Vantage error';
+  for(let attempt=0;attempt<4;attempt++){
+    const gap=Date.now()-lastAvRequestAt;
+    if(gap<REQUEST_GAP_MS) await sleep(REQUEST_GAP_MS-gap);
+    lastAvRequestAt=Date.now();
+    const r=await fetch(u.toString(),{cache:'no-store'});
+    if(!r.ok){lastError=`Alpha Vantage HTTP ${r.status}`;}
+    else{
+      const j=await r.json();
+      const apiError=j.Note||j.Information||j['Error Message'];
+      if(!apiError)return j;
+      lastError=String(apiError);
+      if(!isThrottleMessage(apiError))throw new Error(lastError);
+    }
+    if(attempt<3)await sleep(1500*Math.pow(2,attempt));
+  }
+  throw new Error(lastError);
 }
+
 function parseMonthly(j:any):MonthlyPoint[]{
   const s=j['Monthly Adjusted Time Series']||j['Monthly Time Series']||{};
   return Object.entries(s).map(([date,v]:any)=>({date,price:n(v['5. adjusted close'])??n(v['4. close'])??NaN})).filter(x=>Number.isFinite(x.price)).sort((a,b)=>a.date.localeCompare(b.date));
@@ -31,31 +50,31 @@ function parseEarnings(j:any):EpsPoint[]{
 function ttmAt(eps:EpsPoint[],date:string){const a=eps.filter(x=>x.fiscalDateEnding<=date).slice(-4);return a.length===4?a.reduce((s,x)=>s+x.reportedEPS,0):null}
 function percentile(current:number,history:number[]){const v=history.filter(x=>Number.isFinite(x)&&x>0&&x<500);if(v.length<36)return {p:null,n:v.length};return {p:v.filter(x=>x<=current).length/v.length*100,n:v.length}}
 async function buildSymbol(symbol:string,tradeDate:string|null,price:number|null):Promise<Enrichment>{
-  try{
-    // 免费档每只股票仅两次请求；结果按股票缓存 7 天，避免页面刷新反复消耗 25 次/日额度。
-    const mj=await av('TIME_SERIES_MONTHLY_ADJUSTED',symbol);
-    const ej=await av('EARNINGS',symbol);
-    const monthly=parseMonthly(mj), earnings=parseEarnings(ej);
-    if(!monthly.length) throw new Error('未返回月度价格序列');
-    if(earnings.length<4) throw new Error('历史季度 EPS 少于4期');
-    const asOf=tradeDate||new Date().toISOString().slice(0,10);
-    const currentEps=ttmAt(earnings,asOf);
-    if(currentEps==null) throw new Error('无法构造当前 TTM EPS');
-    if(currentEps<=0)return {ttmEps:currentEps,ttmPe:null,percentile5y:null,historyMonths:0,source:'Alpha Vantage',status:'not_applicable',dataNote:'TTM EPS ≤ 0，PE 不适用'};
-    const currentPe=price!=null?price/currentEps:null;
-    if(currentPe==null) throw new Error('当前价格为空');
-    const cutoff=new Date(asOf+'T00:00:00Z');cutoff.setUTCFullYear(cutoff.getUTCFullYear()-5);const cut=cutoff.toISOString().slice(0,10);
-    const hist=monthly.filter(x=>x.date>=cut&&x.date<=asOf).map(x=>{const e=ttmAt(earnings,x.date);return e!=null&&e>0?x.price/e:NaN});
-    const {p, n:months}=percentile(currentPe,hist);
-    return {ttmEps:currentEps,ttmPe:currentPe,percentile5y:p,historyMonths:months,source:'Alpha Vantage（月度复权价格 + 历史季度EPS）',status:p==null?'unavailable':'ok',dataNote:p==null?`仅 ${months} 个月有效PE，需要至少36个月`:`${months} 个月有效PE；历史分位计算成功`};
-  }catch(e){return {ttmEps:null,ttmPe:null,percentile5y:null,historyMonths:0,source:'Alpha Vantage',status:'unavailable',dataNote:compactError(e)}}
+  // V2.4.1: 全局请求间隔 + 限流退避；只有成功结果进入 7 天缓存，失败不会被缓存。
+  const mj=await av('TIME_SERIES_MONTHLY_ADJUSTED',symbol);
+  const ej=await av('EARNINGS',symbol);
+  const monthly=parseMonthly(mj), earnings=parseEarnings(ej);
+  if(!monthly.length) throw new Error('未返回月度价格序列');
+  if(earnings.length<4) throw new Error('历史季度 EPS 少于4期');
+  const asOf=tradeDate||new Date().toISOString().slice(0,10);
+  const currentEps=ttmAt(earnings,asOf);
+  if(currentEps==null) throw new Error('无法构造当前 TTM EPS');
+  if(currentEps<=0)return {ttmEps:currentEps,ttmPe:null,percentile5y:null,historyMonths:0,source:'Alpha Vantage',status:'not_applicable',dataNote:'TTM EPS ≤ 0，PE 不适用'};
+  const currentPe=price!=null?price/currentEps:null;
+  if(currentPe==null) throw new Error('当前价格为空');
+  const cutoff=new Date(asOf+'T00:00:00Z');cutoff.setUTCFullYear(cutoff.getUTCFullYear()-5);const cut=cutoff.toISOString().slice(0,10);
+  const hist=monthly.filter(x=>x.date>=cut&&x.date<=asOf).map(x=>{const e=ttmAt(earnings,x.date);return e!=null&&e>0?x.price/e:NaN});
+  const {p, n:months}=percentile(currentPe,hist);
+  return {ttmEps:currentEps,ttmPe:currentPe,percentile5y:p,historyMonths:months,source:'Alpha Vantage（月度复权价格 + 历史季度EPS）',status:p==null?'unavailable':'ok',dataNote:p==null?`仅 ${months} 个月有效PE，需要至少36个月`:`${months} 个月有效PE；历史分位计算成功`};
 }
 function cachedSymbol(symbol:string,tradeDate:string|null,price:number|null){
-  return unstable_cache(()=>buildSymbol(symbol,tradeDate,price),['valuation-v24',symbol,tradeDate||'na',String(price??'na')],{revalidate:604800})();
+  return unstable_cache(()=>buildSymbol(symbol,tradeDate,price),['valuation-v241',symbol,tradeDate||'na',String(price??'na')],{revalidate:604800})();
 }
 async function enrichOne(s:StockSnapshot):Promise<StockSnapshot>{
   if(!process.env.ALPHA_VANTAGE_API_KEY)return {...s,dataNote:'未配置 ALPHA_VANTAGE_API_KEY'};
-  const x=await cachedSymbol(s.symbol,s.tradeDate,s.price);
+  let x:Enrichment;
+  try{x=await cachedSymbol(s.symbol,s.tradeDate,s.price);}
+  catch(e){return {...s,status:'unavailable',source:'Alpha Vantage',dataNote:compactError(e),historyMonths:0,priceMode:'snapshot'};}
   if(x.status==='unavailable')return {...s,status:'unavailable',source:x.source,dataNote:x.dataNote,historyMonths:x.historyMonths,priceMode:'snapshot'};
   const label=x.status==='not_applicable'?'不适用':valuationLabel(x.ttmPe,x.percentile5y,x.ttmEps);
   return {...s,ttmEps:x.ttmEps,ttmPe:x.ttmPe,percentile5y:x.percentile5y,label,status:x.status,source:x.source,dataNote:x.dataNote,historyMonths:x.historyMonths,priceMode:'snapshot'};
@@ -66,5 +85,5 @@ export async function getDashboardData():Promise<DashboardData>{
   const stocks:StockSnapshot[]=[];
   for(const s of dashboardData.stocks) stocks.push(await enrichOne(s));
   const ok=stocks.filter(s=>s.status==='ok').length;
-  return {...dashboardData,stocks,updatedAt:new Date().toISOString(),events:[{symbol:'SYSTEM',title:`历史估值：${ok}/${stocks.length} 只已完成`,source:'Dashboard V2.4',time:new Date().toISOString().slice(0,10),note:'每只股票显示数据诊断；免费 API 成功结果按股票缓存7天。'},...dashboardData.events]};
+  return {...dashboardData,stocks,updatedAt:new Date().toISOString(),events:[{symbol:'SYSTEM',title:`历史估值：${ok}/${stocks.length} 只已完成`,source:'Dashboard V2.4.1',time:new Date().toISOString().slice(0,10),note:'每只股票显示数据诊断；Alpha Vantage 请求至少间隔1.35秒并自动退避重试；只有成功结果缓存7天，失败不缓存。'},...dashboardData.events]};
 }
