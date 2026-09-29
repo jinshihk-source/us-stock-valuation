@@ -1,38 +1,17 @@
-# 美股科技估值仪表盘 V2.2
+# US Stock Valuation Dashboard V2.4
 
-## 本次修正
-- 删除根目录旧 `index.html`，避免打开 V2 却看到 V1 的 S&P 100 / OEF 页面。
-- 首页唯一入口为 Next.js `app/page.tsx`。
-- 顶部固定为 `NASDAQ-100 / QQQ` 与 `S&P 500 / SPY`。
-- 两张指数卡显示：收盘价、TTM PE、Forward PE（可靠时）、5Y PE 分位、10Y PE 分位、估值温度条、估值数据日期。
-- 增加真实 `/api/cron/update` 路由，与 `vercel.json` 对应；未配置授权行情源时拒绝覆盖快照。
+V2.4 focuses on a reliable free historical-valuation pipeline.
 
-## 当前指数参考快照
-- NASDAQ-100：TTM PE 28.80；5Y PE 分位 22.15%；10Y 41.15%；估值快照 2026-09-18。QQQ EOD 价格截至 2026-09-28。
-- S&P 500：TTM PE 25.10；5Y PE 分位 40.40%；10Y 56.25%；Forward PE(FY1) 21.31；估值指标日期分别在页面注明。SPY EOD 价格截至 2026-09-28。
+- Alpha Vantage monthly adjusted prices + quarterly earnings
+- Rebuilds monthly TTM PE and 5-year percentile
+- Requires >=36 valid monthly PE observations
+- Per-stock diagnostics (`dataNote`, `historyMonths`) instead of opaque “数据不足”
+- Sequential API initialization to reduce free-tier throttling
+- Successful per-stock results cached for 7 days
+- Live-price provider interface is reserved but intentionally disabled until a source with public-display rights is configured
 
-注意：指数估值和 ETF 收盘价的更新时间可能不同，页面故意分别标注，不能把旧估值伪装成当日实时值。
+Environment variable:
 
-## 数据管线
-1. SEC EDGAR XBRL -> 个股 fundamentals / TTM EPS
-2. Authorized EOD provider -> close / daily change
-3. Valuation engine -> TTM PE / historical percentile / label
-4. Daily snapshot -> dashboard
-5. Index-level valuation source -> NASDAQ-100 / S&P 500
+`ALPHA_VANTAGE_API_KEY`
 
-## 部署
-将 ZIP 内 `us-valuation-dashboard` 文件夹中的全部内容覆盖到现有 GitHub 仓库根目录并 Commit。Vercel 会从 `main` 自动重新部署。
-
-## 后续环境变量
-- `CRON_SECRET`
-- `MARKET_DATA_PROVIDER`
-- `MARKET_DATA_API_KEY`
-
-
-## V2.2 fix
-- Fixed `/api/dashboard` to import the unified `dashboardData` export.
-- Removed stale references to `unavailableStocks` and `unavailableIndices`.
-
-
-## V2.3: enable 5Y stock valuation percentiles
-Add `ALPHA_VANTAGE_API_KEY` in Vercel → Project Settings → Environment Variables. The free mode uses 2 calls per stock (monthly adjusted price + earnings), 22 calls/day for the 11 displayed stocks, then caches the result for 24 hours. Historical percentile uses the last 5 years of monthly TTM PE observations and requires at least 36 valid months.
+The current stock prices in `lib/data.ts` remain display snapshots. They are not represented as live prices.
