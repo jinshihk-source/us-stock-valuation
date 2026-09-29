@@ -2,6 +2,7 @@ import { unstable_cache } from 'next/cache';
 import { dashboardData } from './data';
 import type { DashboardData, StockSnapshot } from './types';
 import { valuationLabel } from './valuation';
+import { attachForwardEstimate } from './forward-estimates';
 
 type MonthlyPoint={date:string;price:number};
 type EpsPoint={fiscalDateEnding:string;reportedDate?:string;reportedEPS:number};
@@ -84,6 +85,9 @@ export async function getDashboardData():Promise<DashboardData>{
   // 串行执行，避免免费 API 在同一瞬间收到 22 个并发请求而限流。成功结果会按股票缓存7天。
   const stocks:StockSnapshot[]=[];
   for(const s of dashboardData.stocks) stocks.push(await enrichOne(s));
-  const ok=stocks.filter(s=>s.status==='ok').length;
-  return {...dashboardData,stocks,updatedAt:new Date().toISOString(),events:[{symbol:'SYSTEM',title:`历史估值：${ok}/${stocks.length} 只已完成`,source:'Dashboard V2.4.1',time:new Date().toISOString().slice(0,10),note:'每只股票显示数据诊断；Alpha Vantage 请求至少间隔1.35秒并自动退避重试；只有成功结果缓存7天，失败不缓存。'},...dashboardData.events]};
+  const withForward:StockSnapshot[]=[];
+  for(const s of stocks) withForward.push(await attachForwardEstimate(s));
+  const ok=withForward.filter(s=>s.status==='ok').length;
+  const forwardReady=withForward.filter(s=>s.forwardPe!=null).length;
+  return {...dashboardData,stocks:withForward,updatedAt:new Date().toISOString(),events:[{symbol:'SYSTEM',title:`历史估值：${ok}/${withForward.length} 只已完成 · Forward PE：${forwardReady}/${withForward.length}`,source:'Dashboard V2.5',time:new Date().toISOString().slice(0,10),note:'EOD 为唯一价格口径；Forward Estimate 使用独立 Provider。未配置获授权的一致预期数据源时保持为空，不使用未经许可的网页爬虫。'},...dashboardData.events]};
 }
