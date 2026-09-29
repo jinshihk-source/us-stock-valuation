@@ -1,0 +1,19 @@
+import {neon} from '@neondatabase/serverless';
+import type {StockSnapshot} from './types';
+import {alphaVantage,finite} from './alpha-vantage';
+import {valuationLabel} from './valuation';
+
+function db(){const u=process.env.DATABASE_URL;if(!u)throw new Error('DATABASE_URL missing');return neon(u)}
+async function ensure(sql:ReturnType<typeof neon>){await sql`CREATE TABLE IF NOT EXISTS stock_metric_cache(symbol TEXT PRIMARY KEY,ttm_eps DOUBLE PRECISION,percentile_5y DOUBLE PRECISION,history_months INTEGER,status TEXT,source TEXT,note TEXT,updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`}
+type E={fiscalDateEnding:string;reportedDate:string;reportedEPS:number};
+function parseE(j:any):E[]{return (j.quarterlyEarnings||[]).map((x:any)=>({fiscalDateEnding:String(x.fiscalDateEnding||''),reportedDate:String(x.reportedDate||x.fiscalDateEnding||''),reportedEPS:finite(x.reportedEPS)})).filter((x:any)=>x.reportedEPS!=null&&x.reportedDate).sort((a:any,b:any)=>a.reportedDate.localeCompare(b.reportedDate))}
+function ttmAt(es:E[],date:string){const a=es.filter(x=>x.reportedDate<=date).slice(-4);return a.length===4?a.reduce((s,x)=>s+x.reportedEPS,0):null}
+function parseM(j:any){const s=j['Monthly Adjusted Time Series']||j['Monthly Time Series']||{};return Object.entries(s).map(([date,v]:any)=>({date,price:finite(v['5. adjusted close'])??finite(v['4. close'])})).filter((x:any)=>x.price!=null).sort((a:any,b:any)=>a.date.localeCompare(b.date))}
+export async function refreshMetric(stock:StockSnapshot){
+ const sql=db();await ensure(sql);const mj=await alphaVantage('TIME_SERIES_MONTHLY_ADJUSTED',stock.symbol);const ej=await alphaVantage('EARNINGS',stock.symbol);const ms=parseM(mj),es=parseE(ej);const asOf=stock.tradeDate||new Date().toISOString().slice(0,10);const eps=ttmAt(es,asOf);if(eps==null)throw new Error('无法构造 TTM EPS');let p:number|null=null,n=0,status='ok',note='';
+ if(eps<=0){status='not_applicable';note='TTM EPS ≤ 0，PE 不适用'}else{const cur=stock.price!=null?stock.price/eps:null;if(cur==null)throw new Error('价格为空');const d=new Date(asOf+'T00:00:00Z');d.setUTCFullYear(d.getUTCFullYear()-5);const cut=d.toISOString().slice(0,10);const hist=ms.filter((x:any)=>x.date>=cut&&x.date<=asOf).map((x:any)=>{const e=ttmAt(es,x.date);return e!=null&&e>0?x.price/e:null}).filter((x:any)=>x!=null&&x>0&&x<500);n=hist.length;p=n>=36?hist.filter((x:number)=>x<=cur).length/n*100:null;status=p==null?'unavailable':'ok';note=p==null?`仅 ${n} 个月有效PE`:`${n} 个月有效PE；按 reportedDate 避免前视偏差`}
+ await sql`INSERT INTO stock_metric_cache(symbol,ttm_eps,percentile_5y,history_months,status,source,note,updated_at) VALUES(${stock.symbol},${eps},${p},${n},${status},${'Alpha Vantage（月度复权价格 + 历史季度EPS）'},${note},NOW()) ON CONFLICT(symbol) DO UPDATE SET ttm_eps=EXCLUDED.ttm_eps,percentile_5y=EXCLUDED.percentile_5y,history_months=EXCLUDED.history_months,status=EXCLUDED.status,source=EXCLUDED.source,note=EXCLUDED.note,updated_at=NOW()`;
+ return {symbol:stock.symbol,ok:true};
+}
+export async function mergeMetrics(stocks:StockSnapshot[]){const sql=db();await ensure(sql);const rows=await sql`SELECT * FROM stock_metric_cache`;const m=new Map((rows as any[]).map(r=>[String(r.symbol),r]));return stocks.map(s=>{const r=m.get(s.symbol);if(!r)return s;const eps=r.ttm_eps==null?null:Number(r.ttm_eps);const pe=s.price!=null&&eps!=null&&eps>0?s.price/eps:null;const p=r.percentile_5y==null?null:Number(r.percentile_5y);return {...s,ttmEps:eps,ttmPe:pe,percentile5y:p,historyMonths:Number(r.history_months||0),status:r.status as any,source:r.source,label:r.status==='not_applicable'?'不适用':valuationLabel(pe,p,eps),dataNote:r.note,priceMode:'eod' as const}})}
+export async function metricAges(){const sql=db();await ensure(sql);const rows=await sql`SELECT symbol,updated_at FROM stock_metric_cache`;return new Map((rows as any[]).map(r=>[String(r.symbol),new Date(r.updated_at).getTime()]))}

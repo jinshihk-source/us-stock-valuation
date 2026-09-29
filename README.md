@@ -53,3 +53,10 @@ Required production environment variables: `DATABASE_URL`, `ALPHA_VANTAGE_API_KE
 
 ### One-time bootstrap after upgrading from V2.7
 Before the first cron has a complete historical basis, call `/api/admin/bootstrap` once with the same Bearer `CRON_SECRET`. It reuses the proven V2.7 historical pipeline, writes the complete result to `dashboard_snapshot`, and is not part of normal visitor traffic. After that, `/` and `/api/dashboard` are database-only reads.
+
+## V2.9 Final snapshot architecture
+- Public `/api/dashboard` and the homepage only read the latest Neon snapshot; they never call Alpha Vantage.
+- Weekday cron refreshes EOD quotes, then advances up to two stale symbols for historical valuation and Forward estimates.
+- `/api/admin/bootstrap` advances one symbol per call for first-time initialization. Repeated calls are idempotent and resume from the oldest/missing symbol.
+- Historical reconstruction uses `reportedDate` rather than fiscal period end to avoid look-ahead bias.
+- Successful per-symbol data is persisted; failed refreshes retain prior values.
