@@ -55,13 +55,46 @@ async function scrapeWebIndex(x:typeof WEB_QUOTES[number]):Promise<GlobalIndex|n
  }catch(e){console.error('authoritative index scrape failed',x.symbol,e);return null}
 }
 
+async function scrapeVN30():Promise<GlobalIndex|null>{
+ const tz='Asia/Ho_Chi_Minh';
+ const fmt=(d:Date)=>new Intl.DateTimeFormat('zh-CN',{timeZone:tz,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(d);
+ const sources=[
+  {url:'https://vn.investing.com/indices/vn-30',label:'Investing VN30 实时网页'},
+  {url:'https://www.tt.hnx.vn/vi-vn/home.html',label:'越南交易所 HNX 市场页'}
+ ];
+ for(const s of sources){
+  try{
+   const r=await fetch(s.url,{cache:'no-store',headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36','Accept':'text/html,application/xhtml+xml','Accept-Language':'vi-VN,vi;q=0.9,en;q=0.8'}});
+   if(!r.ok)continue;
+   const raw=await r.text();
+   const h=raw.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/\s+/g,' ');
+   let m:RegExpMatchArray|null=null;
+   if(s.url.includes('investing.com')){
+    m=h.match(/VN\s*30\s*\(VNI30\)[\s\S]{0,500}?([0-9]{1,2}[,.][0-9]{3}(?:[,.][0-9]+)?)[\s\S]{0,120}?([+-][0-9]+(?:[,.][0-9]+)?)\s*\(([+-][0-9]+(?:[,.][0-9]+)?)%\)/i)
+      ||h.match(/VN\s*30[\s\S]{0,350}?([0-9]{1,2}[,.][0-9]{3}(?:[,.][0-9]+)?)[\s\S]{0,120}?([+-][0-9]+(?:[,.][0-9]+)?)\s*\(([+-][0-9]+(?:[,.][0-9]+)?)%\)/i);
+   }else{
+    m=h.match(/VN30\s*[|:]?\s*([0-9]{1,2}[.,][0-9]{3}(?:[.,][0-9]+)?)\s*[|:]?\s*([+-]?[0-9]+(?:[.,][0-9]+)?)\s*[|:]?\s*([+-]?[0-9]+(?:[.,][0-9]+)?)/i);
+   }
+   if(!m)continue;
+   const norm=(v:string)=>{const t=v.trim(); if(t.includes(',')&&t.includes('.'))return Number(t.replace(/,/g,'')); if(t.includes(',')){const p=t.split(',');return p[p.length-1].length<=2?Number(t.replace(',','.')):Number(t.replace(/,/g,''))} return Number(t)};
+   const price=norm(m[1]),pct=norm(m[3]);
+   if(!Number.isFinite(price)||price<1000||price>4000||!Number.isFinite(pct)||Math.abs(pct)>10)continue;
+   const tm=h.match(/(?:Real.Time Data|Dữ Liệu theo Thời Gian Thực)[^0-9]{0,20}(\d{1,2}:\d{2}(?::\d{2})?)/i);
+   const now=new Date();
+   const md=new Intl.DateTimeFormat('zh-CN',{timeZone:tz,month:'2-digit',day:'2-digit',hour12:false}).format(now);
+   return {name:'越南VN30',symbol:'VNI30',market:'越南',timeZone:tz,price,changePct:pct,asOf:tm?md+' '+tm[1]:fmt(now),status:state(tz),source:s.label+' · 原页点位/涨跌幅',delay:s.url.includes('investing.com')?'实时网页':'约15分钟'};
+  }catch(e){console.error('VN30 source failed',s.label,e)}
+ }
+ return null;
+}
+
 async function one(x:typeof ITEMS[number]):Promise<GlobalIndex>{const [name,symbol,market,timeZone,delay]=x;try{const u='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol)+'?range=5d&interval=5m';const r=await fetch(u,{cache:'no-store',headers:{'User-Agent':'Mozilla/5.0 (compatible; PersonalStockDashboard/1.0)','Accept':'application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);const z=(await r.json())?.chart?.result?.[0],ts:number[]=z?.timestamp||[],cl:(number|null)[]=z?.indicators?.quote?.[0]?.close||[];
 const points:{epoch:number;date:string;price:number}[]=[];for(let i=0;i<ts.length;i++){const price=Number(cl[i]);if(Number.isFinite(price)&&price>0){const p=parts(ts[i],timeZone);points.push({epoch:ts[i],date:p.date,price})}}if(!points.length)throw new Error('no valid intraday points');
 const latest=points[points.length-1],dates=[...new Set(points.map(p=>p.date))].sort(),prevDate=[...dates].reverse().find(d=>d<latest.date);if(!prevDate)throw new Error('previous trading day missing');const prevPoints=points.filter(p=>p.date===prevDate),prev=prevPoints[prevPoints.length-1];const changePct=(latest.price/prev.price-1)*100,asOf=new Intl.DateTimeFormat('zh-CN',{timeZone,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(latest.epoch*1000));return {name,symbol,market,timeZone,price:latest.price,changePct,asOf,status:state(timeZone),source:'Yahoo Finance 5m · same-series calculation',delay}}catch(e){console.error('global index failed',symbol,e);return {name,symbol,market,timeZone,price:null,changePct:null,asOf:null,status:'数据等待',source:'Yahoo Finance 5m',delay}}}
 export async function fetchGlobalIndices(){
  const shanghai=scrapeShanghai();
  const rest=WEB_QUOTES.map(async x=>{
-  const web=await scrapeWebIndex(x);
+  const web=x.symbol==='VNI30'?await scrapeVN30():await scrapeWebIndex(x);
   if(web)return web;
   const fallback=ITEMS.find(i=>i[1]===x.symbol);
   const q=fallback?await one(fallback):null;
