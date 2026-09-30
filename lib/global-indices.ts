@@ -66,11 +66,11 @@ async function scrapeVN30():Promise<GlobalIndex|null>{
   if(!r.ok)throw new Error('SSI iBoard HTTP '+r.status);
   const raw=await r.text();
   const h=raw.replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/\s+/g,' ');
-  const m=h.match(/VN30\\s+([0-9]{1,2},[0-9]{3}(?:\\.[0-9]+)?)\\s*\\(\\s*([+-]?\\d+(?:\\.\\d+)?)\\s+([+-]?\\d+(?:\\.\\d+)?)%\\s*\\)/i);
+  const m=h.match(/VN30\s+([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)\s*\(\s*([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)%\s*\)/i);
   if(!m)throw new Error('VN30 published quote not present in SSI HTML');
   const price=Number(m[1].replace(/,/g,'')),pct=Number(m[3]);
   if(!Number.isFinite(price)||price<1000||price>4000||!Number.isFinite(pct)||Math.abs(pct)>10)throw new Error('VN30 validation failed');
-  const timeMatch=h.match(/(?:^|\\s)(\\d{2}:\\d{2}:\\d{2})(?:\\s|$)/);
+  const timeMatch=h.match(/(?:^|\s)(\d{2}:\d{2}:\d{2})(?:\s|$)/);
   const md=new Intl.DateTimeFormat('zh-CN',{timeZone:tz,month:'2-digit',day:'2-digit',hour12:false}).format(new Date());
   const asOf=timeMatch?md+' '+timeMatch[1]:new Intl.DateTimeFormat('zh-CN',{timeZone:tz,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());
   return {name:'越南VN30',symbol:'VNI30',market:'越南',timeZone:tz,price,changePct:pct,asOf,status:state(tz),source:'SSI iBoard · VN30原始行情',delay:'公开行情板'};
