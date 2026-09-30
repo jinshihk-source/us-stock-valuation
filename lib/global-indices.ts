@@ -25,9 +25,9 @@ async function scrapeShanghai():Promise<GlobalIndex>{
  }
 }
 const WEB_QUOTES=[
- {name:'日经225',symbol:'^N225',market:'日本',timeZone:'Asia/Tokyo',url:'https://indexes.nikkei.co.jp/en/nkave/index/profile',delay:'日经官方网页'},
+ {name:'日经225',symbol:'^N225',market:'日本',timeZone:'Asia/Tokyo',url:'https://jp.investing.com/indices/japan-ni225',delay:'Investing · 日经225现成行情'},
  {name:'韩国KOSPI',symbol:'^KS11',market:'韩国',timeZone:'Asia/Seoul',url:'https://indices.krx.co.kr/main/main.jsp',delay:'KRX官方网页'},
- {name:'越南VN30',symbol:'VNI30',market:'越南',timeZone:'Asia/Ho_Chi_Minh',url:'https://vn.investing.com/indices/vn-30',delay:'网页实时行情'}
+ {name:'越南VN30',symbol:'VNI30',market:'越南',timeZone:'Asia/Ho_Chi_Minh',url:'https://vn.investing.com/indices/vn-30-historical-data',delay:'Investing · VN30现成行情'}
 ] as const;
 
 async function scrapeWebIndex(x:typeof WEB_QUOTES[number]):Promise<GlobalIndex|null>{
@@ -38,15 +38,15 @@ async function scrapeWebIndex(x:typeof WEB_QUOTES[number]):Promise<GlobalIndex|n
   const h=raw.replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;|&minus;/g,' ').replace(/\s+/g,' ');
   let price:number|null=null,pct:number|null=null;
   if(x.symbol==='^N225'){
-   const m=h.match(/Nikkei Stock Average\s*\(Nikkei 225\)\s*([0-9]{2,3},[0-9]{3}(?:\.[0-9]+)?)\s*([+-]?\d+(?:\.\d+)?)%/i)
-    ||h.match(/Nikkei Stock Average\s*\(Nikkei 225\)[\s\S]{0,160}?([0-9]{2,3},[0-9]{3}(?:\.[0-9]+)?)[\s\S]{0,80}?([+-]?\d+(?:\.\d+)?)%/i);
+   const m=h.match(/(?:日経平均株価|Nikkei 225|N225)[\s\S]{0,600}?([0-9]{2,3},[0-9]{3}(?:\.[0-9]+)?)[\s\S]{0,120}?([+-]?\d+(?:\.\d+)?)%/i)
+    ||h.match(/([0-9]{2,3},[0-9]{3}(?:\.[0-9]+)?)\s+[+-]?[0-9,.]+\s*\(([+-]?\d+(?:\.\d+)?)%\)/i);
    if(m){price=Number(m[1].replace(/,/g,''));pct=Number(m[2])}
   }else if(x.symbol==='^KS11'){
    const m=h.match(/KOSPI\s+([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)\s+[▲▼]?\s*[0-9,.]+\s*\(?([0-9.]+)\)?/i);
    if(m){price=Number(m[1].replace(/,/g,''));const seg=m[0];pct=Number(m[2])*(seg.includes('▼')?-1:1)}
   }else{
-   const m=h.match(/VN\s*30\s*\(VNI30\)[^0-9]{0,180}([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)[^%]{0,100}\(?([+-]?\d+(?:\.\d+)?)%\)?/i)
-    ||h.match(/VN\s*30[^0-9]{0,120}([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)[^%]{0,100}\(?([+-]?\d+(?:\.\d+)?)%\)?/i);
+   const m=h.match(/VN\s*30\s*\(VNI30\)[\s\S]{0,500}?([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)[\s\S]{0,100}?([+-]?\d+(?:\.\d+)?)%/i)
+    ||h.match(/([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)\s+[+-]?[0-9,.]+\s*\(([+-]?\d+(?:\.\d+)?)%\)/i);
    if(m){price=Number(m[1].replace(/,/g,''));pct=Number(m[2])}
   }
   if(price==null||pct==null||!Number.isFinite(price)||!Number.isFinite(pct)||price<=0||Math.abs(pct)>15)return null;
@@ -83,11 +83,11 @@ const latest=points[points.length-1],dates=[...new Set(points.map(p=>p.date))].s
 export async function fetchGlobalIndices(){
  const shanghai=scrapeShanghai();
  const rest=WEB_QUOTES.map(async x=>{
-  const web=x.symbol==='VNI30'?await scrapeVN30():await scrapeWebIndex(x);
+  const web=await scrapeWebIndex(x);
   if(web)return web;
   // Nikkei must come only from the published Nikkei page; never substitute Yahoo.
   if(x.symbol==='^N225'){
-   return {name:x.name,symbol:x.symbol,market:x.market,timeZone:x.timeZone,price:null,changePct:null,asOf:null,status:'数据等待' as const,source:'日经官方网页',delay:'官方网页暂不可用'};
+   return {name:x.name,symbol:x.symbol,market:x.market,timeZone:x.timeZone,price:null,changePct:null,asOf:null,status:'数据等待' as const,source:'Investing · 日经225现成行情',delay:'网页暂不可用'};
   }
   const fallback=ITEMS.find(i=>i[1]===x.symbol);
   const q=fallback?await one(fallback):null;
