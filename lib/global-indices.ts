@@ -1,7 +1,7 @@
 import type {GlobalIndex} from './types';
 const ITEMS=[['上证指数','000001.SS','中国','Asia/Shanghai','约30分钟'],['日经225','^N225','日本','Asia/Tokyo','延迟行情'],['韩国KOSPI','^KS11','韩国','Asia/Seoul','延迟行情'],['越南VN-Index','^VNINDEX.VN','越南','Asia/Ho_Chi_Minh','约15分钟']] as const;
 function parts(epoch:number,tz:string){const p=new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date(epoch*1000)),g=(k:string)=>p.find(x=>x.type===k)?.value||'';return {date:g('year')+'-'+g('month')+'-'+g('day'),mins:Number(g('hour'))*60+Number(g('minute'))}}
-function state(tz:string){const p=new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date()),g=(k:string)=>p.find(x=>x.type===k)?.value||'',wd=g('weekday'),m=Number(g('hour'))*60+Number(g('minute'));if(wd==='Sat'||wd==='Sun')return '休市' as const;if(tz==='Asia/Ho_Chi_Minh'){if((m>=540&&m<690)||(m>=780&&m<885))return '盘中' as const;if(m>=690&&m<780)return '午间休市' as const;return '已收盘' as const}const open=tz==='Asia/Shanghai'?(m>=570&&m<690)||(m>=780&&m<900):tz==='Asia/Tokyo'?(m>=540&&m<690)||(m>=750&&m<930):tz==='Asia/Seoul'?(m>=540&&m<930):false;return open?'盘中' as const:'已收盘' as const}
+function state(tz:string){const p=new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date()),g=(k:string)=>p.find(x=>x.type===k)?.value||'',wd=g('weekday'),m=Number(g('hour'))*60+Number(g('minute'));if(wd==='Sat'||wd==='Sun')return '休市' as const;if(tz==='Asia/Ho_Chi_Minh'){if(m<540)return '未开盘' as const;if((m>=540&&m<690)||(m>=780&&m<885))return '盘中' as const;if(m>=690&&m<780)return '午间休市' as const;return '已收盘' as const}const open=tz==='Asia/Shanghai'?(m>=570&&m<690)||(m>=780&&m<900):tz==='Asia/Tokyo'?(m>=540&&m<690)||(m>=750&&m<930):tz==='Asia/Seoul'?(m>=540&&m<930):false;return open?'盘中' as const:'已收盘' as const}
 async function scrapeShanghai():Promise<GlobalIndex>{
  try{
   const r=await fetch('https://hq.sinajs.cn/list=s_sh000001',{cache:'no-store',headers:{
@@ -47,7 +47,7 @@ async function scrapeWebIndex(x:typeof WEB_QUOTES[number]):Promise<GlobalIndex|n
    const m=h.match(/VN Index[^0-9]{0,120}([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)[^%]{0,80}([+-]?\d+(?:\.\d+)?)%/i);
    if(m){price=Number(m[1].replace(/,/g,''));pct=Number(m[2])}
   }
-  if(price==null||!Number.isFinite(price)||price<=0||pct==null||!Number.isFinite(pct))return null;
+  if(price==null||!Number.isFinite(price)||price<=0||pct==null||!Number.isFinite(pct)||Math.abs(pct)>15)return null;
   asOf=new Intl.DateTimeFormat('zh-CN',{timeZone:x.timeZone,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());
   return {name:x.name,symbol:x.symbol,market:x.market,timeZone:x.timeZone,price,changePct:pct,asOf,status:state(x.timeZone),source:'公开行情网页 · 同页快照',delay:x.delay};
  }catch(e){console.error('web index scrape failed',x.symbol,e);return null}
