@@ -36,20 +36,28 @@ async function scrapeWebIndex(x:typeof WEB_QUOTES[number]):Promise<GlobalIndex|n
   if(!r.ok)throw new Error('HTTP '+r.status);
   const raw=await r.text();
   const h=raw.replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;|&minus;/g,' ').replace(/\s+/g,' ');
-  let price:number|null=null,pct:number|null=null,asOf:string|null=null;
+  let price:number|null=null,prev:number|null=null,pct:number|null=null;
   if(x.symbol==='^N225'){
-   const m=h.match(/Nikkei 225[^0-9]{0,120}([0-9]{2,3},[0-9]{3}(?:\.[0-9]+)?)[^%]{0,80}([+-]?\d+(?:\.\d+)?)%/i);
-   if(m){price=Number(m[1].replace(/,/g,''));pct=Number(m[2])}
+   const pm=raw.match(/"regularMarketPrice"\s*:\s*\{[^}]*"raw"\s*:\s*([0-9.]+)/);
+   const cm=raw.match(/"regularMarketPreviousClose"\s*:\s*\{[^}]*"raw"\s*:\s*([0-9.]+)/);
+   if(pm&&cm){price=Number(pm[1]);prev=Number(cm[1])}
   }else if(x.symbol==='^KS11'){
-   const p=h.match(/成交\s*([0-9,]+(?:\.[0-9]+)?)/),q=h.match(/漲跌幅\s*([+-]?[0-9.]+)%/);
-   if(p&&q){price=Number(p[1].replace(/,/g,''));pct=Number(q[1])}
+   const pm=h.match(/成交\s*([0-9,]+(?:\.[0-9]+)?)/);
+   const cm=h.match(/昨收\s*([0-9,]+(?:\.[0-9]+)?)/);
+   if(pm&&cm){price=Number(pm[1].replace(/,/g,''));prev=Number(cm[1].replace(/,/g,''))}
   }else{
-   const m=h.match(/VN Index[^0-9]{0,120}([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)[^%]{0,80}([+-]?\d+(?:\.\d+)?)%/i);
-   if(m){price=Number(m[1].replace(/,/g,''));pct=Number(m[2])}
+   const pm=raw.match(/"last_close"\s*:\s*"?(\d+(?:\.\d+)?)"?/i)||raw.match(/"last"\s*:\s*"?(\d+(?:\.\d+)?)"?/i);
+   const cm=raw.match(/"prev_close"\s*:\s*"?(\d+(?:\.\d+)?)"?/i)||raw.match(/"previousClose"\s*:\s*"?(\d+(?:\.\d+)?)"?/i);
+   if(pm&&cm){price=Number(pm[1]);prev=Number(cm[1])}
+   if(price==null||prev==null){
+    const m=h.match(/VN\s*30[^0-9]{0,100}([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)[^0-9]{0,120}(?:Prev(?:ious)? Close|Đóng cửa hôm trước|Hôm Trước)[^0-9]{0,40}([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)/i);
+    if(m){price=Number(m[1].replace(/,/g,''));prev=Number(m[2].replace(/,/g,''))}
+   }
   }
-  if(price==null||!Number.isFinite(price)||price<=0||pct==null||!Number.isFinite(pct)||Math.abs(pct)>15)return null;
-  asOf=new Intl.DateTimeFormat('zh-CN',{timeZone:x.timeZone,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());
-  return {name:x.name,symbol:x.symbol,market:x.market,timeZone:x.timeZone,price,changePct:pct,asOf,status:state(x.timeZone),source:'公开行情网页 · 同页快照',delay:x.delay};
+  if(price!=null&&prev!=null&&Number.isFinite(price)&&Number.isFinite(prev)&&price>0&&prev>0)pct=(price/prev-1)*100;
+  if(price==null||prev==null||pct==null||!Number.isFinite(pct)||Math.abs(pct)>15)return null;
+  const asOf=new Intl.DateTimeFormat('zh-CN',{timeZone:x.timeZone,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());
+  return {name:x.name,symbol:x.symbol,market:x.market,timeZone:x.timeZone,price,changePct:pct,asOf,status:state(x.timeZone),source:'公开行情网页 · 当前价/昨收同页计算',delay:x.delay};
  }catch(e){console.error('web index scrape failed',x.symbol,e);return null}
 }
 
