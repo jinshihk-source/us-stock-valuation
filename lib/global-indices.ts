@@ -1,5 +1,5 @@
 import type {GlobalIndex} from './types';
-const ITEMS=[['上证指数','000001.SS','中国','Asia/Shanghai','约30分钟'],['日经225','^N225','日本','Asia/Tokyo','延迟行情'],['韩国KOSPI','^KS11','韩国','Asia/Seoul','延迟行情'],['越南VN-Index','^VNINDEX.VN','越南','Asia/Ho_Chi_Minh','约15分钟']] as const;
+const ITEMS=[['上证指数','000001.SS','中国','Asia/Shanghai','约30分钟'],['日经225','^N225','日本','Asia/Tokyo','延迟行情'],['韩国KOSPI','^KS11','韩国','Asia/Seoul','延迟行情'],['越南VN30','VNI30','越南','Asia/Ho_Chi_Minh','网页实时行情']] as const;
 function parts(epoch:number,tz:string){const p=new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date(epoch*1000)),g=(k:string)=>p.find(x=>x.type===k)?.value||'';return {date:g('year')+'-'+g('month')+'-'+g('day'),mins:Number(g('hour'))*60+Number(g('minute'))}}
 function state(tz:string){const p=new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date()),g=(k:string)=>p.find(x=>x.type===k)?.value||'',wd=g('weekday'),m=Number(g('hour'))*60+Number(g('minute'));if(wd==='Sat'||wd==='Sun')return '休市' as const;if(tz==='Asia/Ho_Chi_Minh'){if(m<540)return '未开盘' as const;if((m>=540&&m<690)||(m>=780&&m<885))return '盘中' as const;if(m>=690&&m<780)return '午间休市' as const;return '已收盘' as const}const open=tz==='Asia/Shanghai'?(m>=570&&m<690)||(m>=780&&m<900):tz==='Asia/Tokyo'?(m>=540&&m<690)||(m>=750&&m<930):tz==='Asia/Seoul'?(m>=540&&m<930):false;return open?'盘中' as const:'已收盘' as const}
 async function scrapeShanghai():Promise<GlobalIndex>{
@@ -27,7 +27,7 @@ async function scrapeShanghai():Promise<GlobalIndex>{
 const WEB_QUOTES=[
  {name:'日经225',symbol:'^N225',market:'日本',timeZone:'Asia/Tokyo',url:'https://sg.finance.yahoo.com/quote/%5EN225/',delay:'网页延迟行情'},
  {name:'韩国KOSPI',symbol:'^KS11',market:'韩国',timeZone:'Asia/Seoul',url:'https://tw.finance.yahoo.com/quote/%5EKS11',delay:'网页延迟行情'},
- {name:'越南VN-Index',symbol:'^VNINDEX.VN',market:'越南',timeZone:'Asia/Ho_Chi_Minh',url:'https://vn.investing.com/indices/vn',delay:'网页行情'}
+ {name:'越南VN30',symbol:'VNI30',market:'越南',timeZone:'Asia/Ho_Chi_Minh',url:'https://vn.investing.com/indices/vn-30',delay:'网页实时行情'}
 ] as const;
 
 async function scrapeWebIndex(x:typeof WEB_QUOTES[number]):Promise<GlobalIndex|null>{
@@ -64,7 +64,7 @@ export async function fetchGlobalIndices(){
   const fallback=ITEMS.find(i=>i[1]===x.symbol);
   const q=fallback?await one(fallback):null;
   if(!q)return {name:x.name,symbol:x.symbol,market:x.market,timeZone:x.timeZone,price:null,changePct:null,asOf:null,status:'数据等待' as const,source:'网页行情',delay:x.delay};
-  if(x.symbol==='^VNINDEX.VN'&&state(x.timeZone)==='盘中'){
+  if(x.symbol==='VNI30'&&state(x.timeZone)==='盘中'){
    const today=new Intl.DateTimeFormat('en-CA',{timeZone:x.timeZone,month:'2-digit',day:'2-digit'}).format(new Date());
    const quoteDay=(q.asOf||'').slice(0,5);
    if(quoteDay&&quoteDay!==today){
