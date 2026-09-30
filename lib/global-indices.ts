@@ -57,35 +57,24 @@ async function scrapeWebIndex(x:typeof WEB_QUOTES[number]):Promise<GlobalIndex|n
 
 async function scrapeVN30():Promise<GlobalIndex|null>{
  const tz='Asia/Ho_Chi_Minh';
- const fmt=(d:Date)=>new Intl.DateTimeFormat('zh-CN',{timeZone:tz,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(d);
- const sources=[
-  {url:'https://vn.investing.com/indices/vn-30',label:'Investing VN30 实时网页'},
-  {url:'https://www.tt.hnx.vn/vi-vn/home.html',label:'越南交易所 HNX 市场页'}
- ];
- for(const s of sources){
-  try{
-   const r=await fetch(s.url,{cache:'no-store',headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36','Accept':'text/html,application/xhtml+xml','Accept-Language':'vi-VN,vi;q=0.9,en;q=0.8'}});
-   if(!r.ok)continue;
-   const raw=await r.text();
-   const h=raw.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/\s+/g,' ');
-   let m:RegExpMatchArray|null=null;
-   if(s.url.includes('investing.com')){
-    m=h.match(/VN\s*30\s*\(VNI30\)[\s\S]{0,500}?([0-9]{1,2}[,.][0-9]{3}(?:[,.][0-9]+)?)[\s\S]{0,120}?([+-][0-9]+(?:[,.][0-9]+)?)\s*\(([+-][0-9]+(?:[,.][0-9]+)?)%\)/i)
-      ||h.match(/VN\s*30[\s\S]{0,350}?([0-9]{1,2}[,.][0-9]{3}(?:[,.][0-9]+)?)[\s\S]{0,120}?([+-][0-9]+(?:[,.][0-9]+)?)\s*\(([+-][0-9]+(?:[,.][0-9]+)?)%\)/i);
-   }else{
-    m=h.match(/VN30\s*[|:]?\s*([0-9]{1,2}[.,][0-9]{3}(?:[.,][0-9]+)?)\s*[|:]?\s*([+-]?[0-9]+(?:[.,][0-9]+)?)\s*[|:]?\s*([+-]?[0-9]+(?:[.,][0-9]+)?)/i);
-   }
-   if(!m)continue;
-   const norm=(v:string)=>{const t=v.trim(); if(t.includes(',')&&t.includes('.'))return Number(t.replace(/,/g,'')); if(t.includes(',')){const p=t.split(',');return p[p.length-1].length<=2?Number(t.replace(',','.')):Number(t.replace(/,/g,''))} return Number(t)};
-   const price=norm(m[1]),pct=norm(m[3]);
-   if(!Number.isFinite(price)||price<1000||price>4000||!Number.isFinite(pct)||Math.abs(pct)>10)continue;
-   const tm=h.match(/(?:Real.Time Data|Dữ Liệu theo Thời Gian Thực)[^0-9]{0,20}(\d{1,2}:\d{2}(?::\d{2})?)/i);
-   const now=new Date();
-   const md=new Intl.DateTimeFormat('zh-CN',{timeZone:tz,month:'2-digit',day:'2-digit',hour12:false}).format(now);
-   return {name:'越南VN30',symbol:'VNI30',market:'越南',timeZone:tz,price,changePct:pct,asOf:tm?md+' '+tm[1]:fmt(now),status:state(tz),source:s.label+' · 原页点位/涨跌幅',delay:s.url.includes('investing.com')?'实时网页':'约15分钟'};
-  }catch(e){console.error('VN30 source failed',s.label,e)}
- }
- return null;
+ try{
+  const r=await fetch('https://iboard.ssi.com.vn/trading-view/vn30',{cache:'no-store',headers:{
+   'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
+   'Accept':'text/html,application/xhtml+xml',
+   'Accept-Language':'vi-VN,vi;q=0.9,en;q=0.8'
+  }});
+  if(!r.ok)throw new Error('SSI iBoard HTTP '+r.status);
+  const raw=await r.text();
+  const h=raw.replace(/<script[\\s\\S]*?<\\/script>/gi,' ').replace(/<style[\\s\\S]*?<\\/style>/gi,' ').replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/\\s+/g,' ');
+  const m=h.match(/VN30\\s+([0-9]{1,2},[0-9]{3}(?:\\.[0-9]+)?)\\s*\\(\\s*([+-]?\\d+(?:\\.\\d+)?)\\s+([+-]?\\d+(?:\\.\\d+)?)%\\s*\\)/i);
+  if(!m)throw new Error('VN30 published quote not present in SSI HTML');
+  const price=Number(m[1].replace(/,/g,'')),pct=Number(m[3]);
+  if(!Number.isFinite(price)||price<1000||price>4000||!Number.isFinite(pct)||Math.abs(pct)>10)throw new Error('VN30 validation failed');
+  const timeMatch=h.match(/(?:^|\\s)(\\d{2}:\\d{2}:\\d{2})(?:\\s|$)/);
+  const md=new Intl.DateTimeFormat('zh-CN',{timeZone:tz,month:'2-digit',day:'2-digit',hour12:false}).format(new Date());
+  const asOf=timeMatch?md+' '+timeMatch[1]:new Intl.DateTimeFormat('zh-CN',{timeZone:tz,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());
+  return {name:'越南VN30',symbol:'VNI30',market:'越南',timeZone:tz,price,changePct:pct,asOf,status:state(tz),source:'SSI iBoard · VN30原始行情',delay:'公开行情板'};
+ }catch(e){console.error('SSI VN30 scrape failed',e);return null}
 }
 
 async function one(x:typeof ITEMS[number]):Promise<GlobalIndex>{const [name,symbol,market,timeZone,delay]=x;try{const u='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol)+'?range=5d&interval=5m';const r=await fetch(u,{cache:'no-store',headers:{'User-Agent':'Mozilla/5.0 (compatible; PersonalStockDashboard/1.0)','Accept':'application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);const z=(await r.json())?.chart?.result?.[0],ts:number[]=z?.timestamp||[],cl:(number|null)[]=z?.indicators?.quote?.[0]?.close||[];
