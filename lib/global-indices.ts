@@ -62,7 +62,16 @@ export async function fetchGlobalIndices(){
   const web=await scrapeWebIndex(x);
   if(web)return web;
   const fallback=ITEMS.find(i=>i[1]===x.symbol);
-  return fallback?one(fallback):{name:x.name,symbol:x.symbol,market:x.market,timeZone:x.timeZone,price:null,changePct:null,asOf:null,status:'数据等待' as const,source:'网页行情',delay:x.delay};
+  const q=fallback?await one(fallback):null;
+  if(!q)return {name:x.name,symbol:x.symbol,market:x.market,timeZone:x.timeZone,price:null,changePct:null,asOf:null,status:'数据等待' as const,source:'网页行情',delay:x.delay};
+  if(x.symbol==='^VNINDEX.VN'&&state(x.timeZone)==='盘中'){
+   const today=new Intl.DateTimeFormat('en-CA',{timeZone:x.timeZone,month:'2-digit',day:'2-digit'}).format(new Date());
+   const quoteDay=(q.asOf||'').slice(0,5);
+   if(quoteDay&&quoteDay!==today){
+    return {...q,status:'数据等待' as const,source:q.source+' · 上一交易日',delay:'盘中源暂未更新'};
+   }
+  }
+  return q;
  });
  return Promise.all([shanghai,...rest])
 }
