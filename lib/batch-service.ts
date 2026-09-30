@@ -36,6 +36,6 @@ export async function advanceBatch(count=1){
   let stocks=await mergeMetrics(base.stocks);stocks=fwd(stocks,await readForwardCache());
   const h=stocks.filter(x=>x.ttmEps!=null).length,fw=stocks.filter(x=>x.forwardPe!=null).length;
   const nowIso=new Date().toISOString();
-  await writeDashboardSnapshot({...base,version:'2.9.1',dataStatus:`snapshot_ready_${h}_historical_${fw}_forward_of_${stocks.length}`,stocks,updatedAt:nowIso,events:[{symbol:'SYSTEM',title:`后台数据进度：历史 ${h}/${stocks.length} · Forward ${fw}/${stocks.length}`,source:'V2.9.1 Batch Worker',time:nowIso.slice(0,10),note:'历史覆盖优先推进；Forward 缺失不会阻塞下一只股票。'},...base.events.filter(e=>e.symbol!=='SYSTEM').slice(0,5)]});
+  await writeDashboardSnapshot({...base,stocks,updatedAt:nowIso,events:[{symbol:'SYSTEM',title:`后台数据进度：历史 ${h}/${stocks.length} · Forward ${fw}/${stocks.length}`,source:'V2.9.1 Batch Worker',time:nowIso.slice(0,10),note:'历史覆盖优先推进；Forward 缺失不会阻塞下一只股票。'},...base.events.filter(e=>e.symbol!=='SYSTEM').slice(0,5)]});
   return {results,historicalReady:h,forwardReady:fw,total:stocks.length};
 }
