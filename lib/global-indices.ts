@@ -58,7 +58,7 @@ async function scrapeWebIndex(x:typeof WEB_QUOTES[number]):Promise<GlobalIndex|n
 async function scrapeVN30():Promise<GlobalIndex|null>{
  const tz='Asia/Ho_Chi_Minh';
  try{
-  const r=await fetch('https://iboard.ssi.com.vn/trading-view/vn30',{cache:'no-store',headers:{
+  const r=await fetch('https://iboard.ssi.com.vn/?language=vi',{cache:'no-store',headers:{
    'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
    'Accept':'text/html,application/xhtml+xml',
    'Accept-Language':'vi-VN,vi;q=0.9,en;q=0.8'
