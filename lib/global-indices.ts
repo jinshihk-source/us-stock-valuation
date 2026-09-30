@@ -1,7 +1,7 @@
 import type {GlobalIndex} from './types';
 const ITEMS=[['上证指数','000001.SS','中国','Asia/Shanghai','约30分钟'],['日经225','^N225','日本','Asia/Tokyo','延迟行情'],['韩国KOSPI','^KS11','韩国','Asia/Seoul','延迟行情'],['越南VN-Index','^VNINDEX.VN','越南','Asia/Ho_Chi_Minh','约15分钟']] as const;
 function parts(epoch:number,tz:string){const p=new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date(epoch*1000)),g=(k:string)=>p.find(x=>x.type===k)?.value||'';return {date:g('year')+'-'+g('month')+'-'+g('day'),mins:Number(g('hour'))*60+Number(g('minute'))}}
-function state(tz:string){const p=new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date()),g=(k:string)=>p.find(x=>x.type===k)?.value||'',wd=g('weekday'),m=Number(g('hour'))*60+Number(g('minute'));if(wd==='Sat'||wd==='Sun')return '休市' as const;const open=tz==='Asia/Shanghai'?(m>=570&&m<690)||(m>=780&&m<900):tz==='Asia/Tokyo'?(m>=540&&m<690)||(m>=750&&m<930):tz==='Asia/Seoul'?(m>=540&&m<930):(m>=540&&m<690)||(m>=780&&m<900);return open?'盘中' as const:'已收盘' as const}
+function state(tz:string){const p=new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date()),g=(k:string)=>p.find(x=>x.type===k)?.value||'',wd=g('weekday'),m=Number(g('hour'))*60+Number(g('minute'));if(wd==='Sat'||wd==='Sun')return '休市' as const;const open=tz==='Asia/Shanghai'?(m>=570&&m<690)||(m>=780&&m<900):tz==='Asia/Tokyo'?(m>=540&&m<690)||(m>=750&&m<930):tz==='Asia/Seoul'?(m>=540&&m<930):tz==='Asia/Ho_Chi_Minh'?(m>=540&&m<690)||(m>=780&&m<870):false;return open?'盘中' as const:'已收盘' as const}
 async function scrapeShanghai():Promise<GlobalIndex>{
  try{
   const r=await fetch('https://hq.sinajs.cn/list=s_sh000001',{cache:'no-store',headers:{
@@ -27,7 +27,7 @@ async function scrapeShanghai():Promise<GlobalIndex>{
 const WEB_QUOTES=[
  {name:'日经225',symbol:'^N225',market:'日本',timeZone:'Asia/Tokyo',url:'https://sg.finance.yahoo.com/quote/%5EN225/',delay:'网页延迟行情'},
  {name:'韩国KOSPI',symbol:'^KS11',market:'韩国',timeZone:'Asia/Seoul',url:'https://tw.finance.yahoo.com/quote/%5EKS11',delay:'网页延迟行情'},
- {name:'越南VN-Index',symbol:'^VNINDEX.VN',market:'越南',timeZone:'Asia/Ho_Chi_Minh',url:'https://vn.investing.com/indices/vn-historical-data',delay:'网页行情'}
+ {name:'越南VN-Index',symbol:'^VNINDEX.VN',market:'越南',timeZone:'Asia/Ho_Chi_Minh',url:'https://vn.investing.com/indices/vn',delay:'网页行情'}
 ] as const;
 
 async function scrapeWebIndex(x:typeof WEB_QUOTES[number]):Promise<GlobalIndex|null>{
