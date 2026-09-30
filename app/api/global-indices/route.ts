@@ -1,0 +1,1 @@
+import {NextResponse} from 'next/server';import {fetchGlobalIndices} from '../../../lib/global-indices';export const dynamic='force-dynamic';export const maxDuration=15;export async function GET(){return NextResponse.json({generatedAt:new Date().toISOString(),indices:await fetchGlobalIndices()})}
