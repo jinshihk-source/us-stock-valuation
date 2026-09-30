@@ -1,10 +1,5 @@
 import type {FearGauge} from './types';
 function level(v:number):FearGauge['level']{if(v<15)return '低波动';if(v<20)return '正常';if(v<30)return '紧张';if(v<40)return '恐慌';return '极端恐慌'}
-export async function fetchVix():Promise<FearGauge>{
- const r=await fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=VIXCLS',{cache:'no-store',headers:{'User-Agent':'us-stock-valuation personal dashboard'}});
- if(!r.ok)throw new Error('FRED VIX HTTP '+r.status);
- const lines=(await r.text()).trim().split(/\r?\n/).slice(1);
- const values=lines.map(x=>{const [date,raw]=x.split(',');const value=Number(raw);return {date,value}}).filter(x=>x.date&&Number.isFinite(x.value));
- if(!values.length)throw new Error('FRED VIX unavailable');
- const last=values.at(-1)!,prev=values.at(-2);return {value:last.value,change:prev?last.value-prev.value:null,asOf:last.date,level:level(last.value),source:'FRED · CBOE VIXCLS（日收盘）'}
-}
+async function yahoo():Promise<FearGauge>{const r=await fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?range=5d&interval=5m',{cache:'no-store',headers:{'User-Agent':'Mozilla/5.0 (compatible; PersonalStockDashboard/1.0)'}});if(!r.ok)throw new Error('Yahoo VIX '+r.status);const z=(await r.json())?.chart?.result?.[0],m=z?.meta||{};const value=Number(m.regularMarketPrice);if(!Number.isFinite(value))throw new Error('Yahoo VIX empty');const prev=Number(m.chartPreviousClose??m.previousClose),epoch=Number(m.regularMarketTime)||0;const asOf=epoch?new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(epoch*1000)):null;return {value,change:Number.isFinite(prev)?value-prev:null,asOf,level:level(value),source:'Yahoo Finance · ^VIX'}}
+async function fred():Promise<FearGauge>{const r=await fetch('https://fred.stlouisfed.org/graph/fredgraph.csv?id=VIXCLS',{cache:'no-store'});if(!r.ok)throw new Error('FRED VIX '+r.status);const values=(await r.text()).trim().split(/\r?\n/).slice(1).map(x=>{const [date,raw]=x.split(',');return {date,value:Number(raw)}}).filter(x=>x.date&&Number.isFinite(x.value));if(!values.length)throw new Error('FRED VIX empty');const a=values.at(-1)!,b=values.at(-2);return {value:a.value,change:b?a.value-b.value:null,asOf:a.date,level:level(a.value),source:'FRED · CBOE VIXCLS'}}
+export async function fetchVix(){try{return await yahoo()}catch(e){console.error('Yahoo VIX failed',e);return fred()}}
