@@ -65,7 +65,7 @@ async function scrapeVN30():Promise<GlobalIndex|null>{
   }});
   if(!r.ok)throw new Error('SSI iBoard HTTP '+r.status);
   const raw=await r.text();
-  const h=raw.replace(/<script[\\s\\S]*?<\\/script>/gi,' ').replace(/<style[\\s\\S]*?<\\/style>/gi,' ').replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/\\s+/g,' ');
+  const h=raw.replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;/g,' ').replace(/\s+/g,' ');
   const m=h.match(/VN30\\s+([0-9]{1,2},[0-9]{3}(?:\\.[0-9]+)?)\\s*\\(\\s*([+-]?\\d+(?:\\.\\d+)?)\\s+([+-]?\\d+(?:\\.\\d+)?)%\\s*\\)/i);
   if(!m)throw new Error('VN30 published quote not present in SSI HTML');
   const price=Number(m[1].replace(/,/g,'')),pct=Number(m[3]);
