@@ -25,40 +25,34 @@ async function scrapeShanghai():Promise<GlobalIndex>{
  }
 }
 const WEB_QUOTES=[
- {name:'日经225',symbol:'^N225',market:'日本',timeZone:'Asia/Tokyo',url:'https://sg.finance.yahoo.com/quote/%5EN225/',delay:'网页延迟行情'},
- {name:'韩国KOSPI',symbol:'^KS11',market:'韩国',timeZone:'Asia/Seoul',url:'https://tw.finance.yahoo.com/quote/%5EKS11',delay:'网页延迟行情'},
+ {name:'日经225',symbol:'^N225',market:'日本',timeZone:'Asia/Tokyo',url:'https://indexes.nikkei.co.jp/en/nkave/index',delay:'日经官方网页'},
+ {name:'韩国KOSPI',symbol:'^KS11',market:'韩国',timeZone:'Asia/Seoul',url:'https://indices.krx.co.kr/main/main.jsp',delay:'KRX官方网页'},
  {name:'越南VN30',symbol:'VNI30',market:'越南',timeZone:'Asia/Ho_Chi_Minh',url:'https://vn.investing.com/indices/vn-30',delay:'网页实时行情'}
 ] as const;
 
 async function scrapeWebIndex(x:typeof WEB_QUOTES[number]):Promise<GlobalIndex|null>{
  try{
-  const r=await fetch(x.url,{cache:'no-store',headers:{'User-Agent':'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15','Accept':'text/html,application/xhtml+xml','Accept-Language':'en-US,en;q=0.9,zh-CN;q=0.8'}});
+  const r=await fetch(x.url,{cache:'no-store',headers:{'User-Agent':'Mozilla/5.0','Accept':'text/html,application/xhtml+xml','Accept-Language':'en-US,en;q=0.9,ko;q=0.8,vi;q=0.8'}});
   if(!r.ok)throw new Error('HTTP '+r.status);
   const raw=await r.text();
   const h=raw.replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;|&minus;/g,' ').replace(/\s+/g,' ');
-  let price:number|null=null,prev:number|null=null,pct:number|null=null;
+  let price:number|null=null,pct:number|null=null;
   if(x.symbol==='^N225'){
-   const pm=raw.match(/"regularMarketPrice"\s*:\s*\{[^}]*"raw"\s*:\s*([0-9.]+)/);
-   const cm=raw.match(/"regularMarketPreviousClose"\s*:\s*\{[^}]*"raw"\s*:\s*([0-9.]+)/);
-   if(pm&&cm){price=Number(pm[1]);prev=Number(cm[1])}
+   const m=h.match(/Nikkei Stock Average\s*\(Nikkei 225\)[^0-9]{0,80}([0-9]{2,3},[0-9]{3}(?:\.[0-9]+)?)[^%]{0,80}([+-]?\d+(?:\.\d+)?)%/i)
+    ||h.match(/Nikkei 225[^0-9]{0,80}([0-9]{2,3},[0-9]{3}(?:\.[0-9]+)?)[^%]{0,80}([+-]?\d+(?:\.\d+)?)%/i);
+   if(m){price=Number(m[1].replace(/,/g,''));pct=Number(m[2])}
   }else if(x.symbol==='^KS11'){
-   const pm=h.match(/成交\s*([0-9,]+(?:\.[0-9]+)?)/);
-   const cm=h.match(/昨收\s*([0-9,]+(?:\.[0-9]+)?)/);
-   if(pm&&cm){price=Number(pm[1].replace(/,/g,''));prev=Number(cm[1].replace(/,/g,''))}
+   const m=h.match(/KOSPI\s+([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)\s+[▲▼]?\s*[0-9,.]+\s*\(?([0-9.]+)\)?/i);
+   if(m){price=Number(m[1].replace(/,/g,''));const seg=m[0];pct=Number(m[2])*(seg.includes('▼')?-1:1)}
   }else{
-   const pm=raw.match(/"last_close"\s*:\s*"?(\d+(?:\.\d+)?)"?/i)||raw.match(/"last"\s*:\s*"?(\d+(?:\.\d+)?)"?/i);
-   const cm=raw.match(/"prev_close"\s*:\s*"?(\d+(?:\.\d+)?)"?/i)||raw.match(/"previousClose"\s*:\s*"?(\d+(?:\.\d+)?)"?/i);
-   if(pm&&cm){price=Number(pm[1]);prev=Number(cm[1])}
-   if(price==null||prev==null){
-    const m=h.match(/VN\s*30[^0-9]{0,100}([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)[^0-9]{0,120}(?:Prev(?:ious)? Close|Đóng cửa hôm trước|Hôm Trước)[^0-9]{0,40}([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)/i);
-    if(m){price=Number(m[1].replace(/,/g,''));prev=Number(m[2].replace(/,/g,''))}
-   }
+   const m=h.match(/VN\s*30\s*\(VNI30\)[^0-9]{0,180}([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)[^%]{0,100}\(?([+-]?\d+(?:\.\d+)?)%\)?/i)
+    ||h.match(/VN\s*30[^0-9]{0,120}([0-9]{1,2},[0-9]{3}(?:\.[0-9]+)?)[^%]{0,100}\(?([+-]?\d+(?:\.\d+)?)%\)?/i);
+   if(m){price=Number(m[1].replace(/,/g,''));pct=Number(m[2])}
   }
-  if(price!=null&&prev!=null&&Number.isFinite(price)&&Number.isFinite(prev)&&price>0&&prev>0)pct=(price/prev-1)*100;
-  if(price==null||prev==null||pct==null||!Number.isFinite(pct)||Math.abs(pct)>15)return null;
+  if(price==null||pct==null||!Number.isFinite(price)||!Number.isFinite(pct)||price<=0||Math.abs(pct)>15)return null;
   const asOf=new Intl.DateTimeFormat('zh-CN',{timeZone:x.timeZone,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());
-  return {name:x.name,symbol:x.symbol,market:x.market,timeZone:x.timeZone,price,changePct:pct,asOf,status:state(x.timeZone),source:'公开行情网页 · 当前价/昨收同页计算',delay:x.delay};
- }catch(e){console.error('web index scrape failed',x.symbol,e);return null}
+  return {name:x.name,symbol:x.symbol,market:x.market,timeZone:x.timeZone,price,changePct:pct,asOf,status:state(x.timeZone),source:x.delay+' · 原页点位/涨跌幅',delay:x.delay};
+ }catch(e){console.error('authoritative index scrape failed',x.symbol,e);return null}
 }
 
 async function one(x:typeof ITEMS[number]):Promise<GlobalIndex>{const [name,symbol,market,timeZone,delay]=x;try{const u='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol)+'?range=5d&interval=5m';const r=await fetch(u,{cache:'no-store',headers:{'User-Agent':'Mozilla/5.0 (compatible; PersonalStockDashboard/1.0)','Accept':'application/json'}});if(!r.ok)throw new Error('HTTP '+r.status);const z=(await r.json())?.chart?.result?.[0],ts:number[]=z?.timestamp||[],cl:(number|null)[]=z?.indicators?.quote?.[0]?.close||[];
