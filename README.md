@@ -60,3 +60,6 @@ Before the first cron has a complete historical basis, call `/api/admin/bootstra
 - `/api/admin/bootstrap` advances one symbol per call for first-time initialization. Repeated calls are idempotent and resume from the oldest/missing symbol.
 - Historical reconstruction uses `reportedDate` rather than fiscal period end to avoid look-ahead bias.
 - Successful per-symbol data is persisted; failed refreshes retain prior values.
+
+## V2.9.1 hotfix
+Bootstrap now prioritizes symbols missing historical metrics. A missing Forward estimate is persisted as an attempted state and can no longer cause repeated refreshes to stay on NVDA forever.

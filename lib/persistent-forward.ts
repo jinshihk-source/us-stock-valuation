@@ -72,7 +72,10 @@ export async function forwardAges(){
 }
 export async function refreshForwardOne(stock:StockSnapshot){
   const sql=db(); if(!sql) throw new Error('DATABASE_URL missing'); await ensureTable(sql);
-  const e=await getForwardEstimate(stock); if(e.forwardEps==null)return {symbol:stock.symbol,ok:false,note:e.note};
+  const e=await getForwardEstimate(stock); if(e.forwardEps==null){
+    await sql`INSERT INTO forward_estimate_cache(symbol,forward_eps,eps_revision_30d,analyst_count,estimate_as_of,estimate_source,updated_at) VALUES(${stock.symbol},${null},${null},${e.analystCount},${e.estimateAsOf},${e.estimateSource},NOW()) ON CONFLICT(symbol) DO UPDATE SET forward_eps=NULL,eps_revision_30d=NULL,analyst_count=EXCLUDED.analyst_count,estimate_as_of=EXCLUDED.estimate_as_of,estimate_source=EXCLUDED.estimate_source,updated_at=NOW()`;
+    return {symbol:stock.symbol,ok:false,note:e.note};
+  }
   await sql`INSERT INTO forward_estimate_cache(symbol,forward_eps,eps_revision_30d,analyst_count,estimate_as_of,estimate_source,updated_at) VALUES(${stock.symbol},${e.forwardEps},${e.epsRevision30d},${e.analystCount},${e.estimateAsOf},${e.estimateSource},NOW()) ON CONFLICT(symbol) DO UPDATE SET forward_eps=EXCLUDED.forward_eps,eps_revision_30d=EXCLUDED.eps_revision_30d,analyst_count=EXCLUDED.analyst_count,estimate_as_of=EXCLUDED.estimate_as_of,estimate_source=EXCLUDED.estimate_source,updated_at=NOW()`;
   return {symbol:stock.symbol,ok:true,note:e.note};
 }
